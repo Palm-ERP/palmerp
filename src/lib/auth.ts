@@ -2,6 +2,13 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import db from "@/lib/db";
+import {
+  getCallbackCookieName,
+  getCsrfCookieName,
+  getPinnedSlugServer,
+  getSessionCookieName,
+  isSecureAuthCookies,
+} from "./instance";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -16,6 +23,14 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials, req) {
         if (!credentials) return null;
+
+        // --- Instancia independiente: solo su tenant (anti datos cruzados) ---
+        // Si la instancia fija slug por entorno, rechaza login de otros tenants
+        // aunque compartan DB o secreto con otra instancia.
+        const pinned = getPinnedSlugServer();
+        if (pinned && (credentials.tenantSlug || "").trim().toLowerCase() !== pinned) {
+          return null;
+        }
 
         // --- Superadmin Bypass Logic (token efímero de 60s) ---
         if (credentials.bypassToken && credentials.userId && credentials.tenantSlug) {
@@ -176,4 +191,31 @@ export const authOptions: NextAuthOptions = {
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   secret: process.env.NEXTAUTH_SECRET,
+  // Cookies con nombre propio por instancia: aunque dos instancias compartan
+  // origen (localhost:3000) y secreto, cada una solo lee SU sesión.
+  // Tras actualizar, cada usuario hace login una vez (la cookie vieja se ignora).
+  cookies: {
+    sessionToken: {
+      name: getSessionCookieName(),
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: isSecureAuthCookies(),
+      },
+    },
+    callbackUrl: {
+      name: getCallbackCookieName(),
+      options: { sameSite: "lax", path: "/", secure: isSecureAuthCookies() },
+    },
+    csrfToken: {
+      name: getCsrfCookieName(),
+      options: {
+        httpOnly: true,
+        sameSite: "lax",
+        path: "/",
+        secure: isSecureAuthCookies(),
+      },
+    },
+  },
 };

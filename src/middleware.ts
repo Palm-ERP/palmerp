@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
+import { getSessionCookieName } from "@/lib/instance";
 
 const PLATFORM_SUBDOMAINS = new Set(["app", "platform", "superadmin", "www"]);
 const RESERVED_SUBDOMAINS = new Set(["api", "admin", "login", "register", "_next", "favicon"]);
@@ -83,7 +84,9 @@ export async function middleware(req: NextRequest) {
   const isRegisterRoute = url.pathname === "/register";
   const isTenantNotFoundRoute = url.pathname === "/tenant-not-found";
 
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  // La cookie de sesión lleva el id de instancia (ver src/lib/instance.ts):
+  // sin cookieName, tras el rename nadie pasaría esta protección.
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET, cookieName: getSessionCookieName() });
 
   // Headers internos para server components / API
   const requestHeaders = new Headers(req.headers);

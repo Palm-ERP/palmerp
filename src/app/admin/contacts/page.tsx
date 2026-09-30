@@ -149,6 +149,64 @@ const getDemoContactsForTenant = (slug: string): Contact[] => {
 type SortField = "name" | "email" | "contactType" | "cif";
 type SortOrder = "asc" | "desc";
 
+type AuditWrite = {
+  id: string;
+  action: string;
+  table?: string;
+  recordId?: string;
+  details: string;
+  timestamp: string;
+  success?: boolean;
+};
+
+/**
+ * Lee audit combinando clave tenant + legacy (migración sin pérdida),
+ * deduplicando por id. Evita que una sucursal lea/pise la otra.
+ */
+function readAuditLogs(): AuditWrite[] {
+  if (typeof window === "undefined") return [];
+  const keys = [getTenantStorageKey("palmera_audit_logs"), "palmera_audit_logs"];
+  const seen = new Set<string>();
+  const out: AuditWrite[] = [];
+  for (const key of keys) {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      const parsed: unknown = JSON.parse(raw);
+      if (!Array.isArray(parsed)) continue;
+      for (const item of parsed) {
+        const e = item as Partial<AuditWrite>;
+        if (!e || typeof e.id !== "string" || seen.has(e.id)) continue;
+        seen.add(e.id);
+        out.push({
+          id: e.id,
+          action: typeof e.action === "string" ? e.action : "SYSTEM_ALERT",
+          table: typeof e.table === "string" ? e.table : undefined,
+          recordId: typeof e.recordId === "string" ? e.recordId : undefined,
+          details: typeof e.details === "string" ? e.details : "",
+          timestamp: typeof e.timestamp === "string" ? e.timestamp : new Date().toISOString(),
+          success: typeof e.success === "boolean" ? e.success : true,
+        });
+      }
+    } catch { /* clave corrupta: se ignora */ }
+  }
+  return out.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
+
+/**
+ * Escribe SIEMPRE en clave tenant (sin datos cruzados) y avisa a la
+ * bandeja en la misma pestaña vía evento personalizado.
+ */
+function writeAuditLog(entry: AuditWrite) {
+  try {
+    const merged = [entry, ...readAuditLogs()].slice(0, 50);
+    localStorage.setItem(getTenantStorageKey("palmera_audit_logs"), JSON.stringify(merged));
+    window.dispatchEvent(new Event("palmera_audit_updated"));
+  } catch (err) {
+    console.error("Failed to write mock audit log", err);
+  }
+}
+
 export default function ContactsPage() {
   // --- States ---
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -433,20 +491,13 @@ export default function ContactsPage() {
       setToastMessage(`¡E-mail enviado con éxito a ${emailContact?.email}!`);
       setTimeout(() => setToastMessage(null), 4000);
 
-      // 2. Audit Log write (Simulate central database logging!)
-      try {
-        const auditLogSaved = localStorage.getItem("palmera_audit_logs") || "[]";
-        const logs = JSON.parse(auditLogSaved);
-        const newLog = {
-          id: "log_" + Date.now(),
-          action: "EMAIL_DISPATCHED",
-          details: `Correo enviado a ${emailContact?.name} (${emailContact?.email}). Saludo: "${emailContact?.customGreeting || "Por defecto"}".`,
-          timestamp: new Date().toISOString()
-        };
-        localStorage.setItem("palmera_audit_logs", JSON.stringify([newLog, ...logs].slice(0, 10)));
-      } catch (err) {
-        console.error("Failed to write mock audit log", err);
-      }
+      // 2. Audit Log write (tenant-isolated, ver readAuditLogs/writeAuditLog)
+      writeAuditLog({
+        id: "log_" + Date.now(),
+        action: "EMAIL_DISPATCHED",
+        details: `Correo enviado a ${emailContact?.name} (${emailContact?.email}). Saludo: "${emailContact?.customGreeting || "Por defecto"}".`,
+        timestamp: new Date().toISOString(),
+      });
     }, 2000);
   };
 
@@ -500,20 +551,13 @@ export default function ContactsPage() {
       setToastMessage(`¡Mensaje de WhatsApp preparado para ${phoneContact.name}!`);
       setTimeout(() => setToastMessage(null), 4000);
 
-      // 2. Audit Log write
-      try {
-        const auditLogSaved = localStorage.getItem("palmera_audit_logs") || "[]";
-        const logs = JSON.parse(auditLogSaved);
-        const newLog = {
-          id: "log_" + Date.now(),
-          action: "WHATSAPP_DISPATCHED",
-          details: `WhatsApp enviado a ${phoneContact.name} (${phoneContact.phone}). Mensaje: "${whatsappText.slice(0, 45)}..."`,
-          timestamp: new Date().toISOString()
-        };
-        localStorage.setItem("palmera_audit_logs", JSON.stringify([newLog, ...logs].slice(0, 10)));
-      } catch (err) {
-        console.error("Failed to write mock audit log", err);
-      }
+      // 2. Audit Log write (tenant-isolated)
+      writeAuditLog({
+        id: "log_" + Date.now(),
+        action: "WHATSAPP_DISPATCHED",
+        details: `WhatsApp enviado a ${phoneContact.name} (${phoneContact.phone}). Mensaje: "${whatsappText.slice(0, 45)}..."`,
+        timestamp: new Date().toISOString(),
+      });
 
       // 3. Open WhatsApp Web/API link
       const whatsappUrl = `https://api.whatsapp.com/send?phone=${encodeURIComponent(cleanPhone)}&text=${encodeURIComponent(whatsappText)}`;
@@ -528,20 +572,13 @@ export default function ContactsPage() {
     setToastMessage(`Llamada finalizada con ${phoneContact?.name} (Duración: ${formatCallTime(callSeconds)})`);
     setTimeout(() => setToastMessage(null), 4000);
 
-    // Audit Log write
-    try {
-      const auditLogSaved = localStorage.getItem("palmera_audit_logs") || "[]";
-      const logs = JSON.parse(auditLogSaved);
-      const newLog = {
-        id: "log_" + Date.now(),
-        action: "PHONE_CALL_COMPLETED",
-        details: `Llamada completada con ${phoneContact?.name} (${phoneContact?.phone}). Duración: ${formatCallTime(callSeconds)}.`,
-        timestamp: new Date().toISOString()
-      };
-      localStorage.setItem("palmera_audit_logs", JSON.stringify([newLog, ...logs].slice(0, 10)));
-    } catch (err) {
-      console.error("Failed to write mock audit log", err);
-    }
+    // Audit Log write (tenant-isolated)
+    writeAuditLog({
+      id: "log_" + Date.now(),
+      action: "PHONE_CALL_COMPLETED",
+      details: `Llamada completada con ${phoneContact?.name} (${phoneContact?.phone}). Duración: ${formatCallTime(callSeconds)}.`,
+      timestamp: new Date().toISOString(),
+    });
   };
 
   const triggerNativeCall = () => {

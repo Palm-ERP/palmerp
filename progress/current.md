@@ -27,3 +27,12 @@
 - `src/app/api/admin/updates/route.ts` y `settings/updates/page.tsx`: comandos/enlace commits dinámicos según upstream detectado.
 - `scripts/fleet-update.mjs`, `.env.example`: defaults a master.
 - `package.json`: 0.1.0→0.2.0 (detección por semver).
+
+## 2026-09-30 — Anti datos-cruzados auth + audit tenant (núcleo)
+- `src/lib/instance.ts` (nuevo, Edge-safe): id de instancia (PINNED_TENANT_SLUG > NEXT_PUBLIC_PINNED_TENANT_SLUG > PALMERP_INSTANCE_ID > palmerp) + nombres de cookie por instancia con prefijos __Secure-/__Host- en https.
+- `src/lib/auth.ts`: cookies sessionToken/callbackUrl/csrfToken con nombre propio (fix raíz: will@getloud.space aparecía en palmerp por misma cookie+secreto+localhost) + guard de login que rechaza otros tenants si hay pin (backport getloudspace).
+- `src/middleware.ts`: getToken con cookieName de instancia (sin esto nadie pasaba /admin).
+- `src/app/admin/contacts/page.tsx`: audit a clave tenant (antes legacy global) + merge sin pérdida + evento live.
+- `.env.example`: documentados PINNED_TENANT_SLUG / NEXT_PUBLIC_PINNED_TENANT_SLUG.
+- Verificado: tsc OK, eslint sin errores nuevos, npm run build OK, helpers testeados en node (palmerp/belpane/getloud/https).
+- Nota: /api/auth/* da 500 en dev local por next/font/google sin internet (pre-existente, no de este cambio); en Vercel funciona.
