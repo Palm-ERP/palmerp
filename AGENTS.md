@@ -10,19 +10,6 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ---
 
-## 🚨 AI HARNESS: REGLA DE ORO DE ARQUITECTURA (CORE VS INSTANCIA) 🚨
-
-**IMPORTANTE:** Este repositorio es el **NÚCLEO (Core)** de Palm ERP, pero se despliega como una **Instancia Aislada** para un solo cliente final (1 Repo = 1 Cliente).
-La base de datos soporta **Multi-Empresa / Multi-Sucursal** a través del campo `tenantId` (que en la base de datos se llama `Tenant`, pero representa empresas de un mismo cliente).
-
-**Como Agente de IA, tienes ESTRICTAMENTE PROHIBIDO:**
-1. **Modificar el código del Core** (`src/core`, UI base, layouts principales) a menos que se te pida explícitamente actualizar el framework.
-2. **Romper las tablas Core de Prisma**. No elimines `tenantId` ni elimines modelos principales. Si necesitas añadir entidades específicas del cliente, añádelas como modelos nuevos conectados mediante relaciones, agrupadas lógicamente, o mejor aún, extiende mediante campos dinámicos si es posible.
-3. **Todo el desarrollo personalizado del cliente debe hacerse en Módulos** (`src/modules/<nombre_modulo>/`). Los módulos deben ser autocontenidos.
-4. **Registro de Módulos**: Cuando crees un nuevo módulo para el cliente, regístralo manualmente añadiéndolo al diccionario `PalmModesRegistry` en `src/modules/registry.ts`.
-
----
-
 ## 1. Antes de empezar (obligatorio)
 
 1. Ejecuta `./init.sh` y verifica que termine sin errores. Si falla, **para** y resuelve el entorno antes de tocar código de la aplicación.

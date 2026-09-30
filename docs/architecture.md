@@ -15,15 +15,17 @@
    - El Core no importa código de los módulos. Son los módulos los que se registran a sí mismos en el Core mediante archivos de configuración estándar (`module.ts`).
    - El menú lateral (Sidebar) carga dinámicamente sus items consultando qué módulos están activos en la tabla de configuración.
 
-3. **Despliegue Aislado (Instancia por Cliente) con Multi-Empresa (Prisma):**
-    - **Arquitectura de Despliegue**: Cada cliente tiene **su propio repositorio** (un clon/fork de este Core), su propio proyecto en Vercel, y su propia base de datos Supabase independiente. NO es un SaaS global.
-    - **El campo `tenantId` (Multi-Empresa)**: Aunque la base de datos es dedicada para un solo cliente, mantenemos la estructura `tenantId` (asociada al modelo `Tenant`) para permitir que **un mismo cliente gestione múltiples empresas, sucursales o unidades de negocio** dentro de su aplicación.
+3. **Base de Datos Desacoplada (Prisma) — SINGLE-DB (Vercel + Supabase):**
+    - **Un único proyecto Vercel (`*.tudominio.com` wildcard) + una única DB Supabase compartida.** No hay DB por tenant.
+    - Aislamiento por `tenantId` (FK `Tenant.id`) en TODAS las tablas de negocio + **Row Level Security (RLS)** en Postgres (`tenant_id = current_setting('app.tenant_id', true)::uuid`). Ver `prisma/migrations/20260603_rls_tenant_isolation/migration.sql` y `migracion-multitenant-erp.md`.
+    - Un único `PrismaClient` singleton (`src/lib/db.ts`). Nunca crear `Map<tenantId, PrismaClient>` ni `DATABASE_URL_<tenant>`.
+    - Defensa en profundidad: toda query filtra `where: { tenantId }` ADEMÁS de RLS. Para aislamiento transaccional usar `withTenantContext(tenantId, tx => ...)` con `set_config('app.tenant_id', $1, true)` local a la transacción (evita leak por pooling PgBouncer transaction mode).
     - Los modelos del Core en `prisma/schema.prisma` son:
-      - `Tenant`: Representa una Empresa / Sucursal del cliente (ej. "Tienda Centro", "Tienda Norte").
-      - `User`: Administradores y staff (aislados por Empresa/Sucursal).
-      - `Contact`: Personas o empresas (aisladas por Empresa).
-      - `Setting`: Parámetros clave-valor (aislados por Empresa).
-      - `AuditLog`: Registro de operaciones.
+      - `Tenant`: registro de instancias (slug, domain, isActive) — tabla de control, NO RLS estricta (lista superadmin).
+      - `User`: Administradores y staff (tenantId obligatorio).
+      - `Contact`: Personas o empresas (tenantId obligatorio).
+      - `Setting`: Parámetros clave-valor por tenant (tenantId obligatorio).
+      - `AuditLog`: Registro de operaciones (tenantId obligatorio).
 
 ---
 
@@ -52,20 +54,22 @@
 
 ---
 
-## 3. Infraestructura y Despliegue Aislado
+## 3. Infraestructura Single-DB
 
 ```
-Request → Vercel (Dominio del Cliente) → middleware.ts (extrae contexto de sucursal si aplica)
-        → Prisma singleton → Supabase (DB Dedicada)
+Request → Vercel wildcard *.tudominio.com → middleware.ts (extrae subdominio)
+        → x-tenant-slug header → resolve Tenant → tenantId
+        → Prisma singleton (DATABASE_URL pooler txn) → Supabase (RLS filtra por app.tenant_id)
 ```
 
-- Cada cliente tiene su propio entorno (variables de entorno, base de datos).
-- La lógica de `tenant_id` sirve exclusivamente para segmentar los datos de las distintas sucursales/empresas de **ese mismo cliente**. No hay mezcla de datos entre diferentes clientes, ya que las bases de datos son físicamente distintas.
+- Wildcard domain `*.tudominio.com` en Vercel (un deployment para todos los subdominios).
+- `middleware.ts` NO hace fallback silencioso: subdominio inexistente → 404 (`/tenant-not-found`), `www` → plataforma.
+- `PALMERA_PLATFORM_DATABASE_URL` y `CREATE DATABASE` por tenant están **desmontados** (legacy). Crear instancia = `INSERT INTO Tenant` + seed via `ProvisioningService` single-DB. Ver `src/lib/provisioning.ts`.
 
 ## 4. Qué NO hacer
 
 - ❌ **No importes** tipos o componentes de `/src/modules/` en carpetas comunes de `/src/components/` o `/src/core/`. El Core debe compilar y ejecutarse al 100% incluso si vacías la carpeta `/src/modules/`.
 - ❌ **No ensucies** el esquema de Prisma con tablas específicas de restaurante a nivel del Core. Si se requieren tablas específicas de un módulo en Prisma, se diseñarán dentro del esquema pero agrupadas y comentadas, o se inyectarán de manera aislada.
 - ❌ **No utilices** blanco puro (`#FFFFFF`) ni negro puro (`#000000`) en la interfaz. Aunque usemos Tailwind CSS v4 con una paleta neutra premium corporativa, respetaremos las escalas cromáticas suaves en modo oscuro y claro para que la aplicación se sienta premium.
-- ❌ **No crees lógicas Multi-Cliente globales**. Este sistema opera asumiendo que es dueño absoluto de su base de datos.
-- ❌ **No asumas que `Tenant` es un cliente de SaaS**. `Tenant` es una "Empresa" o "Sucursal" dentro de la corporación del cliente dueño de esta instancia.
+- ❌ **No crees DB por tenant** ni `DATABASE_URL_<slug>`, ni `Map<tenantId, PrismaClient>`. Single-DB: todo va por `tenant_id` + RLS.
+- ❌ **No uses `set_config(..., false)`** (global) ni reutilices conexión pooled sin resetear `app.tenant_id` — fuga cross-tenant.
