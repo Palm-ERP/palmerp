@@ -15,3 +15,9 @@
 - `src/app/api/fleet/backup-heartbeat/route.ts:1` POST heartbeat + GET semáforo (verde <24h, amarillo 24-48h, rojo >48h)
 - `.env.example:45` documentadas vars triple backup, `package.json:14` script `backup:agent`
 - `./init.sh` verde, feature_list #9 `done`, #8 sigue `blocked` (retomar tras backup)
+
+## 2026-09-30 — Conversaciones → Gmail (núcleo)
+- `src/app/admin/conversations/page.tsx`: reescrito como clon Gmail (sidebar Recibidos/Destacados/Pospuestos/Enviados/Borradores/Spam/Papelera, pestañas Principal/Promociones/Social/Actualizaciones, hilos, lectura, redactar+responder, selección múltiple, papelera/spam/posponer). Store propio `palmera_emails_<slug>`, no depende del pipeline contacts→audit (roto en belpane).
+- `src/app/admin/conversations/audit/page.tsx`: auditoría original restaurada (HEAD) como vista propia; ruta `/admin/conversations/audit` intacta.
+- `src/lib/clientStorage.ts`: backport `getPinnedSlugClient`/`getDefaultSlug` (idéntico a belpane/getloudspace) para `NEXT_PUBLIC_PINNED_TENANT_SLUG`; sin el pin el comportamiento es el legacy.
+- `./init.sh` verde (tsc + prisma).
