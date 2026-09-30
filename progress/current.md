@@ -21,3 +21,9 @@
 - `src/app/admin/conversations/audit/page.tsx`: auditoría original restaurada (HEAD) como vista propia; ruta `/admin/conversations/audit` intacta.
 - `src/lib/clientStorage.ts`: backport `getPinnedSlugClient`/`getDefaultSlug` (idéntico a belpane/getloudspace) para `NEXT_PUBLIC_PINNED_TENANT_SLUG`; sin el pin el comportamiento es el legacy.
 - `./init.sh` verde (tsc + prisma).
+
+## 2026-09-30 — Fix updates fleet (rama master) + v0.2.0
+- `src/lib/fleet/upstream.ts`: DEFAULT_BRANCH main→master (el remoto no tiene rama main) + export getRepoAndBranch.
+- `src/app/api/admin/updates/route.ts` y `settings/updates/page.tsx`: comandos/enlace commits dinámicos según upstream detectado.
+- `scripts/fleet-update.mjs`, `.env.example`: defaults a master.
+- `package.json`: 0.1.0→0.2.0 (detección por semver).

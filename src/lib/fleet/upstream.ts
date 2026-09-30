@@ -5,7 +5,7 @@ import { getLocalVersion, compareSemver } from "./version";
 
 export interface UpstreamInfo {
   repo: string; // "Palm-ERP/palmerp"
-  branch: string; // "main"
+  branch: string; // "master"
   commit: string | null;
   commitShort: string | null;
   version: string | null; // package.json version del upstream (si se puede leer)
@@ -21,9 +21,9 @@ export interface UpdateCheck {
 }
 
 const DEFAULT_REPO = "Palm-ERP/palmerp";
-const DEFAULT_BRANCH = "main";
+const DEFAULT_BRANCH = "master";
 
-function getRepoAndBranch(): { repo: string; branch: string } {
+export function getRepoAndBranch(): { repo: string; branch: string } {
   const repo = process.env.PALMERP_UPSTREAM_REPO || process.env.PALMERP_UPSTREAM || DEFAULT_REPO;
   const branch = process.env.PALMERP_UPSTREAM_BRANCH || DEFAULT_BRANCH;
   return { repo, branch };

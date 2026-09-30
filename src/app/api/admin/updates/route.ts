@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { checkForUpdates } from "@/lib/fleet/upstream";
+import { checkForUpdates, getRepoAndBranch } from "@/lib/fleet/upstream";
 import { getLocalVersion } from "@/lib/fleet/version";
 import { prisma } from "@/lib/db";
 
@@ -68,17 +68,18 @@ export async function POST(req: Request) {
           },
         });
       }
+      const { branch: upstreamBranch } = getRepoAndBranch();
       return NextResponse.json({
         success: true,
-        message: "Update registrado. En Vercel: git fetch upstream && git merge upstream/main && npm ci && npx prisma migrate deploy && git push. En MiniPC: node scripts/fleet-update.mjs --apply",
+        message: `Update registrado. En Vercel: git fetch upstream && git merge upstream/${upstreamBranch} && npm ci && npx prisma migrate deploy && git push. En MiniPC: node scripts/fleet-update.mjs --apply`,
         nextSteps: [
           "git fetch upstream",
-          "git merge upstream/main --no-edit",
+          `git merge upstream/${upstreamBranch} --no-edit`,
           "npm ci --legacy-peer-deps",
           "npx prisma generate",
           "npx prisma migrate deploy",
           "npm run build",
-          "git push origin main",
+          `git push origin ${upstreamBranch}`,
         ],
       });
     }
